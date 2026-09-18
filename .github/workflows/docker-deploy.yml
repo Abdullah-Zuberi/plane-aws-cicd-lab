@@ -51,4 +51,4 @@ jobs:
         run: |
           echo "Waiting for service to start..."
           sleep 10
-          curl -f http://$EC2_HOST/ || exit 1
+          curl -f http://$EC2_HOST:4000/ || exit 1
