@@ -38,7 +38,7 @@ jobs:
           ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
           
           ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app"
-          scp -r fallback-app/package.json fallback-app/package-lock.json fallback-app/.next fallback-app/public fallback-app/next.config.js $EC2_USER@$EC2_HOST:~/app/fallback-app/
+          scp -r fallback-app $EC2_USER@$EC2_HOST:~/app/
           
           ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && npm install --production && pm2 delete fallback-app || true && pm2 start npm --name fallback-app -- start && pm2 save"
 
