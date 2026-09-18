@@ -40,7 +40,7 @@ jobs:
           ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app"
           scp -r fallback-app $EC2_USER@$EC2_HOST:~/app/
           
-          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && npm install --production && pm2 delete fallback-app || true && pm2 start npm --name fallback-app -- start && pm2 save"
+          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && npm install --production && pm2 delete fallback-app || true && pm2 start "npm start" --name fallback-app && pm2 save"
 
       - name: Health Check
         env:
