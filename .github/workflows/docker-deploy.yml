@@ -1,0 +1,54 @@
+name: Docker Deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./fallback-app
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/plane-aws-cicd:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/plane-aws-cicd:latest
+
+      - name: Deploy to EC2
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+          
+          ssh $EC2_USER@$EC2_HOST "pm2 delete fallback-app || true"
+          ssh $EC2_USER@$EC2_HOST "sudo docker pull $DOCKERHUB_USERNAME/plane-aws-cicd:${{ github.sha }}"
+          ssh $EC2_USER@$EC2_HOST "sudo docker stop plane-app || true && sudo docker rm plane-app || true"
+          ssh $EC2_USER@$EC2_HOST "sudo docker run -d --name plane-app --restart unless-stopped -p 3000:3000 $DOCKERHUB_USERNAME/plane-aws-cicd:${{ github.sha }}"
+
+      - name: Health Check
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          echo "Waiting for service to start..."
+          sleep 10
+          curl -f http://$EC2_HOST/ || exit 1

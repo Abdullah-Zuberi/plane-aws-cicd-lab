@@ -20,11 +20,11 @@ jobs:
 
       - name: Install Dependencies
         working-directory: fallback-app
-        run: yarn install
+        run: npm install
 
       - name: Build Application
         working-directory: fallback-app
-        run: yarn build
+        run: npm run build
 
       - name: Deploy to EC2
         env:
@@ -38,9 +38,9 @@ jobs:
           ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
           
           ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app"
-          scp -r fallback-app/package.json fallback-app/yarn.lock fallback-app/.next fallback-app/public fallback-app/next.config.js $EC2_USER@$EC2_HOST:~/app/fallback-app/
+          scp -r fallback-app/package.json fallback-app/package-lock.json fallback-app/.next fallback-app/public fallback-app/next.config.js $EC2_USER@$EC2_HOST:~/app/fallback-app/
           
-          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && yarn install --production && pm2 delete fallback-app || true && pm2 start yarn --name fallback-app -- start -p 3000 && pm2 save"
+          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && npm install --production && pm2 delete fallback-app || true && pm2 start npm --name fallback-app -- start -p 3000 && pm2 save"
 
       - name: Health Check
         env:
