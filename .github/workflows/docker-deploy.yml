@@ -43,7 +43,7 @@ jobs:
           ssh $EC2_USER@$EC2_HOST "pm2 delete fallback-app || true"
           ssh $EC2_USER@$EC2_HOST "sudo docker pull $DOCKERHUB_USERNAME/plane-aws-cicd:${{ github.sha }}"
           ssh $EC2_USER@$EC2_HOST "sudo docker stop plane-app || true && sudo docker rm plane-app || true"
-          ssh $EC2_USER@$EC2_HOST "sudo docker run -d --name plane-app --restart unless-stopped -p 3000:3000 $DOCKERHUB_USERNAME/plane-aws-cicd:${{ github.sha }}"
+          ssh $EC2_USER@$EC2_HOST "sudo docker run -d --name plane-app --restart unless-stopped -p 4000:3000 $DOCKERHUB_USERNAME/plane-aws-cicd:${{ github.sha }}"
 
       - name: Health Check
         env:
