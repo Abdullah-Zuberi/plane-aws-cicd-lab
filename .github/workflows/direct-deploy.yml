@@ -1,0 +1,51 @@
+name: Direct Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        working-directory: fallback-app
+        run: yarn install
+
+      - name: Build Application
+        working-directory: fallback-app
+        run: yarn build
+
+      - name: Deploy to EC2
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+          
+          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app"
+          scp -r fallback-app/package.json fallback-app/yarn.lock fallback-app/.next fallback-app/public fallback-app/next.config.js $EC2_USER@$EC2_HOST:~/app/fallback-app/
+          
+          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && yarn install --production && pm2 delete fallback-app || true && pm2 start yarn --name fallback-app -- start -p 3000 && pm2 save"
+
+      - name: Health Check
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          echo "Waiting for service to start..."
+          sleep 10
+          curl -f http://$EC2_HOST/ || exit 1
