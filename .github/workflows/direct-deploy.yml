@@ -115,9 +115,9 @@ jobs:
             mv ~/app/fallback-app-temp ~/app/fallback-app &&
             cd ~/app/fallback-app &&
             if pm2 show fallback-app > /dev/null 2>&1; then
-              PORT=4000 pm2 reload fallback-app --update-env
+              pm2 reload fallback-app --update-env
             else
-              PORT=4000 pm2 start npx --name fallback-app -- next start
+              pm2 start npx --name fallback-app -- next start -p 4000
             fi &&
             pm2 save
           "
