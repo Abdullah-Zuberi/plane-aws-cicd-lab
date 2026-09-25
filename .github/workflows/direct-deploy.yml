@@ -128,7 +128,7 @@ jobs:
         run: |
           echo "Waiting for service to stabilize..."
           sleep 10
-          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://$EC2_HOST/)
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://$EC2_HOST:3000/)
           if [ "$HTTP_STATUS" -ne 200 ]; then
             echo "Health check failed with status $HTTP_STATUS"
             exit 1
