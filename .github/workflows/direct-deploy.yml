@@ -115,9 +115,9 @@ jobs:
             mv ~/app/fallback-app-temp ~/app/fallback-app &&
             cd ~/app/fallback-app &&
             if pm2 show fallback-app > /dev/null 2>&1; then
-              pm2 reload fallback-app --update-env
+              PORT=4000 pm2 reload fallback-app --update-env
             else
-              pm2 start npx --name fallback-app -- next start
+              PORT=4000 pm2 start npx --name fallback-app -- next start
             fi &&
             pm2 save
           "
@@ -128,7 +128,7 @@ jobs:
         run: |
           echo "Waiting for service to stabilize..."
           sleep 10
-          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://$EC2_HOST/)
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://$EC2_HOST:4000/)
           if [ "$HTTP_STATUS" -ne 200 ]; then
             echo "Health check failed with status $HTTP_STATUS"
             exit 1
