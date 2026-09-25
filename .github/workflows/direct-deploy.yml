@@ -5,9 +5,22 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Deployment operation'
+        type: choice
+        options:
+          - deploy
+          - rollback
+        default: 'deploy'
+      run_id:
+        description: 'GitHub Workflow Run ID of a successful deployment to rollback to (required if operation is rollback)'
+        required: false
+        type: string
 
 jobs:
-  deploy:
+  build:
+    if: github.event.inputs.operation == 'deploy' || github.event.inputs.operation == ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -20,11 +33,65 @@ jobs:
 
       - name: Install Dependencies
         working-directory: fallback-app
-        run: npm install
+        run: npm ci
 
       - name: Build Application
         working-directory: fallback-app
         run: npm run build
+        
+      - name: Package Application
+        working-directory: fallback-app
+        run: |
+          npm ci --omit=dev
+          tar -czf ../application-artifact.tar.gz .next public package.json package-lock.json next.config.js theme.config.js node_modules
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-${{ github.sha }}
+          path: application-artifact.tar.gz
+          retention-days: 10
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always() && (needs.build.result == 'success' || github.event.inputs.operation == 'rollback')
+    steps:
+      - name: Determine Artifact Details
+        id: prep
+        run: |
+          if [ "${{ github.event.inputs.operation }}" == "rollback" ]; then
+            if [ -z "${{ github.event.inputs.run_id }}" ]; then
+              echo "Error: run_id is required for rollback."
+              exit 1
+            fi
+          fi
+          
+      - name: Download Artifact (Deploy Mode)
+        if: github.event.inputs.operation != 'rollback'
+        uses: actions/download-artifact@v4
+        with:
+          name: application-${{ github.sha }}
+          path: .
+          
+      - name: Download Artifact (Rollback Mode)
+        if: github.event.inputs.operation == 'rollback'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+          
+      - name: Validate Artifact
+        run: |
+          if [ "${{ github.event.inputs.operation }}" == "rollback" ]; then
+            find artifacts -name "application-artifact.tar.gz" -exec mv {} . \;
+          fi
+          if [ ! -f application-artifact.tar.gz ]; then
+            echo "Error: Deployment artifact not found."
+            exit 1
+          fi
+          echo "Artifact validated."
 
       - name: Deploy to EC2
         env:
@@ -37,15 +104,33 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
           
-          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app"
-          scp -r fallback-app $EC2_USER@$EC2_HOST:~/app/
+          ssh $EC2_USER@$EC2_HOST "mkdir -p ~/app/fallback-app-new"
+          scp application-artifact.tar.gz $EC2_USER@$EC2_HOST:~/app/fallback-app-new/
           
-          ssh $EC2_USER@$EC2_HOST "cd ~/app/fallback-app && npm install --production && pm2 delete fallback-app || true && pm2 start npx --name fallback-app -- next start && pm2 save"
+          ssh $EC2_USER@$EC2_HOST "
+            mkdir -p ~/app/fallback-app-temp &&
+            tar -xzf ~/app/fallback-app-new/application-artifact.tar.gz -C ~/app/fallback-app-temp &&
+            rm -rf ~/app/fallback-app-old &&
+            mv ~/app/fallback-app ~/app/fallback-app-old 2>/dev/null || true &&
+            mv ~/app/fallback-app-temp ~/app/fallback-app &&
+            cd ~/app/fallback-app &&
+            if pm2 show fallback-app > /dev/null 2>&1; then
+              pm2 reload fallback-app --update-env
+            else
+              pm2 start npx --name fallback-app -- next start
+            fi &&
+            pm2 save
+          "
 
       - name: Health Check
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-          echo "Waiting for service to start..."
+          echo "Waiting for service to stabilize..."
           sleep 10
-          curl -f http://$EC2_HOST/ || exit 1
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" http://$EC2_HOST/)
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Health check failed with status $HTTP_STATUS"
+            exit 1
+          fi
+          echo "Health check passed!"
